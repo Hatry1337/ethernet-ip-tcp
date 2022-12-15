@@ -3,9 +3,11 @@ import EthernetPort from "./Ethernet/EthernetPort";
 import fs from "fs";
 import { PCAPDump } from "./PCAPDump";
 import { EthernetCable } from "./Ethernet/EthernetCable";
-import { IPProtocols, IPv4Packet } from "./IP/IPv4Packet";
+import { InternetProtocols, IPv4Packet } from "./IP/IPv4Packet";
+import InternetProtocolModule from "./IP/InternetProtocolModule";
+import { UDPPacket } from "./UDP/UDPPacket";
 
-const wsharkout = fs.createWriteStream('./wsharkout');
+const wsharkout = fs.createWriteStream('/var/run/wsharkout');
 
 let port1 = new EthernetPort(Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5, 0x6]));
 let port2 = new EthernetPort(Buffer.from([0x6, 0x5, 0x4, 0x3, 0x2, 0x1]));
@@ -18,13 +20,24 @@ port2.on("frameAny", (frame, raw) => {
     PCAPDump.dumpData(raw, wsharkout);
 });
 
-setInterval(() => {
-    let ippack = new IPv4Packet(228, IPProtocols.ICMP, Buffer.from([10, 8, 0, 1]), Buffer.from([10, 8, 0, 2]), Buffer.alloc(0));
+let ipmodule = new InternetProtocolModule(1500);
+
+ipmodule.output.on("packet", packet => {
     port1.sendFrame(new EthernetFrame(  Buffer.from([0x1, 0x2, 0x3, 0x4, 0x5, 0x6]),
         Buffer.from([0x6, 0x5, 0x4, 0x3, 0x2, 0x1]),
         Buffer.from([ 0x08, 0x00 ]),
-        ippack.packHeader()));
-        //Buffer.from("00010800060400011c740d829164c0a80d01000000000000c0a80d68", "hex")));
+        packet.pack()));
+})
+
+setInterval(() => {
+    let ippack = new IPv4Packet(228,
+                                InternetProtocols.UDP,
+                                Buffer.from([10, 8, 0, 1]),
+                                Buffer.from([10, 8, 0, 2]),
+                                new UDPPacket(0, 10, Buffer.allocUnsafe(2000)).pack()
+    );
+
+    ipmodule.sendPacket(ippack);
 }, 1000);
 
 wsharkout.on("open", () => {

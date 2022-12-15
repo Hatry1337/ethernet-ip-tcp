@@ -67,7 +67,7 @@ class EthernetPort extends EventEmitter {
         if(frame.typeLength.length !== 2) {
             throw new Error("Invalid typeLength length.");
         }
-        if(6 + 6 + 2 + frame.data.length > 1514){
+        if((6 + 6 + 2 + frame.data.length) > 1514){
             throw new Error("Frame length is too long.")
         }
         this.txStream.write(frame.pack());

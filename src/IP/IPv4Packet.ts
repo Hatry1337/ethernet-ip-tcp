@@ -1,10 +1,10 @@
 export interface IPv4Flags {
     reserved: 0 | 1;
     doNotFragment: 0 | 1;
-    hasFragments: 0 | 1;
+    moreFragments: 0 | 1;
 }
 
-export enum IPProtocols {
+export enum InternetProtocols {
     ICMP = 1,
     TCP = 6,
     UDP = 17
@@ -23,7 +23,7 @@ export class IPv4Packet {
     public flags: IPv4Flags = {
         reserved: 0,
         doNotFragment: 0,
-        hasFragments: 0,
+        moreFragments: 0,
     }
 
     //** 13bit uint */
@@ -39,7 +39,7 @@ export class IPv4Packet {
     public id: number;
 
     /** 8bit uint */
-    public proto: IPProtocols;
+    public proto: InternetProtocols;
 
     /** 32bit uint */
     public srcAddr: Buffer;
@@ -49,7 +49,7 @@ export class IPv4Packet {
 
     public data: Buffer;
 
-    constructor(id: number, proto: IPProtocols, srcAddr: Buffer, dstAddr: Buffer, data: Buffer) {
+    constructor(id: number, proto: InternetProtocols, srcAddr: Buffer, dstAddr: Buffer, data: Buffer) {
         this.id = id;
         this.proto = proto;
         this.srcAddr = srcAddr;
@@ -69,7 +69,7 @@ export class IPv4Packet {
         buff.writeUint16BE(this.length, 2);
         buff.writeUint16BE(this.id, 4);
 
-        let f = this.flags.reserved << 2 | this.flags.doNotFragment << 1 | this.flags.doNotFragment;
+        let f = this.flags.reserved << 2 | this.flags.doNotFragment << 1 | this.flags.moreFragments;
 
         //2^13 - 1 = 8191 = 13 bit uint.
         if(this.fragOffset > 8191 || this.fragOffset < 0) {
@@ -85,34 +85,52 @@ export class IPv4Packet {
 
         return buff;
     }
-    /*
-    public calcHeaderChecksum() {
 
-            // Initialise the accumulator.
-            let acc=0xffff;
+    public pack(csumCalc: boolean = true) {
+        let buff = Buffer.alloc(this.headerLen * 4 + this.data.length);
 
-            // Handle complete 16-bit blocks.
-            for (size_t i=0;i+1<length;i+=2) {
-                uint16_t word;
-                memcpy(&word,data+i,2);
-                acc+=ntohs(word);
-                if (acc>0xffff) {
-                    acc-=0xffff;
-                }
-            }
+        let hpack = this.packHeader();
+        if(csumCalc){
+            this.headerChecksum = IPv4Packet.calcChecksum(hpack);
+            hpack.writeUint16BE(this.headerChecksum, 10);
+        }
 
-            // Handle any partial block at the end of the data.
-            if (length&1) {
-                uint16_t word=0;
-                memcpy(&word,data+length-1,1);
-                acc+=ntohs(word);
-                if (acc>0xffff) {
-                    acc-=0xffff;
-                }
-            }
+        hpack.copy(buff);
+        this.data.copy(buff, this.headerLen * 4);
 
-            // Return the checksum in network byte order.
-            return htons(~acc);
+        return buff;
     }
-    */
+
+    public static calcChecksum(data: Buffer) {
+        let sum = 0;
+        for(let i = 0; i < data.length; i += 2)
+        {
+            let digit = (data[i] << 8) + data[i + 1];
+            sum = (sum + digit) % 65535;
+        }
+        return (~sum) & 0xFFFF;
+    }
+
+    public clone() {
+        let srcAddr = Buffer.alloc(6);
+        let dstAddr = Buffer.alloc(6);
+        let data = Buffer.alloc(this.data.length);
+
+        this.srcAddr.copy(srcAddr);
+        this.dstAddr.copy(dstAddr);
+        this.data.copy(data);
+
+        let packetCopy = new IPv4Packet(this.id, this.proto, srcAddr, dstAddr, data);
+        packetCopy.DSCP_CN = this.DSCP_CN;
+        packetCopy.flags = {
+            reserved: this.flags.reserved,
+            doNotFragment: this.flags.doNotFragment,
+            moreFragments: this.flags.moreFragments
+        }
+        packetCopy.fragOffset = this.fragOffset;
+        packetCopy.TTL = this.TTL;
+        packetCopy.headerChecksum = this.headerChecksum;
+
+        return packetCopy;
+    }
 }
