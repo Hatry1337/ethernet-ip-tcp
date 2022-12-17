@@ -57,8 +57,16 @@ export class IPv4Packet {
         this.data = data;
     }
 
-    get length() {
+    public get length() {
         return this.headerLen * 4 + this.data.length;
+    }
+
+    public get uid() {
+        let packid = Buffer.alloc(6 + 6 + 2);
+        this.srcAddr.copy(packid);
+        this.dstAddr.copy(packid, 6);
+        packid.writeUInt16BE(this.id, 12);
+        return packid;
     }
 
     public packHeader() {

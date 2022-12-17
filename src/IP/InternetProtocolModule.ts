@@ -2,20 +2,36 @@ import EventEmitter from "events";
 import { IPv4Packet } from "./IPv4Packet";
 import InternetPacketIO from "./InternetPacketIO";
 
+interface DataChunk {
+    data: Buffer;
+    offset: number;
+}
+
+interface PacketAccumulator {
+    firstPacket?: IPv4Packet;
+    chunks: DataChunk[];
+    receivedDataLen: number;
+    timeout: NodeJS.Timeout;
+}
+
 declare interface InternetProtocolModule {
-    //on(event: "packet", callback: (packet: IPv4Packet) => void): this;
+    on(event: "packetChunk", callback: (packet: IPv4Packet) => void): this;
+    on(event: "packet", callback: (packet: IPv4Packet) => void): this;
 }
 
 class InternetProtocolModule extends EventEmitter {
     public input: InternetPacketIO = new InternetPacketIO();
     public output: InternetPacketIO = new InternetPacketIO();
 
-    constructor(public maxTransmissionUnit: number) {
+    private chunkedPacketsAccumulator: Map<string, PacketAccumulator> = new Map();
+
+    constructor(public maxTransmissionUnit: number, public chunkAccumulationTimeout: number) {
         super();
-        //this.input.on("packet", this.handleInputPacket.bind(this));
+        this.input.on("packet", this.handleInputPacket.bind(this));
 
         this.output.useMiddleware((packet, next) => {
             if(packet.length > this.maxTransmissionUnit){
+                // #TODO add ICMP response on packet voiding.
                 if(packet.flags.doNotFragment) return;
 
                 let packets = InternetProtocolModule.splitPacket(this.maxTransmissionUnit, packet);
@@ -29,6 +45,61 @@ class InternetProtocolModule extends EventEmitter {
                 return packet;
             }
         });
+    }
+
+    private handleInputPacket(packet: IPv4Packet) {
+        if(packet.flags.moreFragments === 1) {
+            this.emit("packetChunk", packet);
+
+            // If packet is part of chunked packet store or update data in accumulator
+            if(packet.flags.moreFragments) {
+                let puid = packet.uid.toString("hex");
+                let accumulator = this.chunkedPacketsAccumulator.get(puid);
+
+                if(!accumulator) {
+                    if(packet.fragOffset === 0) {
+                        accumulator = {
+                            firstPacket: packet,
+                            chunks: [],
+                            receivedDataLen: packet.data.length,
+                            timeout: setTimeout(() => {}, this.chunkAccumulationTimeout)
+                        }
+                    } else {
+                        accumulator = {
+                            chunks: [ {
+                                offset: packet.fragOffset,
+                                data: packet.data
+                            } ],
+                            receivedDataLen: packet.data.length,
+                            timeout: setTimeout(() => {}, this.chunkAccumulationTimeout)
+                        }
+                    }
+                    this.chunkedPacketsAccumulator.set(puid, accumulator);
+                    return;
+                }
+
+
+                /* #TODO Work In Progress.
+                     
+                let buff = Buffer.alloc(accpack.data.length + packet.data.length);
+                accpack.data.copy(buff);
+                packet.data.copy(buff, packet.fragOffset * 8);
+
+                accpack.data = buff;
+                this.chunkedPacketsAccumulator.set(puid, accpack);
+                return;
+                */
+            }
+
+            // If packet is the latest chunk of chunked packet finally assemble packet and emit "packet" event
+            if(packet.fragOffset !== 0) {
+                let puid = packet.uid.toString("hex");
+                let accpack = this.chunkedPacketsAccumulator.get(puid);
+
+
+            }
+
+        }
     }
 
     public sendPacket(packet: IPv4Packet) {

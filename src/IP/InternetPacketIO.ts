@@ -9,7 +9,7 @@ interface InternetPacketIOMiddleware {
 }
 
 declare interface InternetPacketIO {
-    on(event: "packetRaw", callback: (packet: IPv4Packet) => void): this;
+    on(event: "packetDirect", callback: (packet: IPv4Packet) => void): this;
     on(event: "packet", callback: (packet: IPv4Packet) => void): this;
 }
 
@@ -17,7 +17,7 @@ class InternetPacketIO extends EventEmitter {
     private middlewareStack: InternetPacketIOMiddleware[] = [];
 
     public write(packet: IPv4Packet) {
-        this.emit("packetRaw", packet);
+        this.emit("packetDirect", packet);
 
         for(let m of this.middlewareStack) {
             let next: boolean = false;
