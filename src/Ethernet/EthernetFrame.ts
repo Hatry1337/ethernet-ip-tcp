@@ -4,10 +4,10 @@ export enum EtherType {
 }
 
 export class EthernetFrame {
-    constructor(public dstMAC: Buffer = Buffer.alloc(6),
-                public srcMAC: Buffer = Buffer.alloc(6),
-                public typeLength: Buffer = Buffer.alloc(2),
-                public data: Buffer = Buffer.alloc(46)) {
+    constructor(public dstMAC: Buffer,
+                public srcMAC: Buffer,
+                public typeLength: Buffer,
+                public data: Buffer) {
     }
 
     public pack() {
@@ -15,11 +15,16 @@ export class EthernetFrame {
     }
 
     public static unpack(data: Buffer) {
-        let frame = new EthernetFrame();
-        data.copy(frame.dstMAC, 0, 0, 6);
-        data.copy(frame.srcMAC, 0, 6, 12);
-        data.copy(frame.typeLength, 0, 12, 14);
-        data.copy(frame.data, 0, 14, data.length - 4);
-        return frame;
+        let dstMAC = Buffer.alloc(6);
+        let srcMAC = Buffer.alloc(6);
+        let typeLength = Buffer.alloc(2);
+        let body = Buffer.alloc(data.length - 14);
+
+        data.copy(dstMAC, 0, 0, 6);
+        data.copy(srcMAC, 0, 6, 12);
+        data.copy(typeLength, 0, 12, 14);
+        data.copy(body, 0, 14);
+
+        return new EthernetFrame(dstMAC, srcMAC, typeLength, body);
     }
 }

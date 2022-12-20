@@ -94,6 +94,36 @@ export class IPv4Packet {
         return buff;
     }
 
+    public static unpack(data: Buffer) {
+        let id = data.readUint16BE(4);
+        let proto = data.readUint8(9);
+
+        let versionPlusHeaderLen = data.readUint8();
+        let version = versionPlusHeaderLen >> 4;
+        let headerLen =  versionPlusHeaderLen - (version << 4);
+
+        let srcAddr = Buffer.alloc(4);
+        data.copy(srcAddr, 0, 12);
+        let dstAddr = Buffer.alloc(4);
+        data.copy(dstAddr, 0, 16);
+
+        let body = Buffer.alloc(data.length - headerLen * 4);
+        data.copy(body, 0, headerLen * 4);
+
+        let packet = new IPv4Packet(id, proto, srcAddr, dstAddr, body);
+
+        let flagsPlusFragOffset = data.readUint16BE(6);
+        let flags = flagsPlusFragOffset >> 13;
+        packet.flags.reserved = (flags >> 2) as 1 | 0;
+        packet.flags.doNotFragment = ((flags >> 1) - (packet.flags.reserved << 1)) as 1 | 0;
+        packet.flags.moreFragments = ((flags >> 1) - (packet.flags.reserved << 2) - (packet.flags.doNotFragment << 1)) as 1 | 0;
+        packet.fragOffset = flagsPlusFragOffset - (flags << 13);
+        packet.TTL = data.readUint8(8);
+        packet.headerChecksum = data.readUint16BE(10);
+
+        return packet;
+    }
+
     public pack(csumCalc: boolean = true) {
         let buff = Buffer.alloc(this.headerLen * 4 + this.data.length);
 
@@ -120,8 +150,8 @@ export class IPv4Packet {
     }
 
     public clone() {
-        let srcAddr = Buffer.alloc(6);
-        let dstAddr = Buffer.alloc(6);
+        let srcAddr = Buffer.alloc(4);
+        let dstAddr = Buffer.alloc(4);
         let data = Buffer.alloc(this.data.length);
 
         this.srcAddr.copy(srcAddr);

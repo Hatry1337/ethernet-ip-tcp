@@ -39,5 +39,6 @@ export class EthernetCable {
         }
         let cab = new EthernetCable();
         cab.connect(port1, port2);
+        return cab;
     }
 }

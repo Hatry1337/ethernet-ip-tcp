@@ -33,11 +33,11 @@ class EthernetPort extends EventEmitter {
 
         this.emit("frameAny", frame, data);
 
-        if(!frame.dstMAC.equals(this.MAC)) {
-            return;
-        }
+        if( frame.dstMAC.equals(this.MAC) ||
+            frame.dstMAC.equals(Buffer.from([ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff ])) ) {
 
-        this.emit("frame", frame, data);
+            this.emit("frame", frame, data);
+        }
     }
 
     public isUp(): boolean {
