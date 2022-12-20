@@ -1,8 +1,6 @@
 import fs from "fs";
 import { PCAPDump } from "./PCAPDump";
 import { EthernetCable } from "./Ethernet/EthernetCable";
-import { InternetProtocols, IPv4Packet } from "./IP/IPv4Packet";
-import { UDPPacket } from "./UDP/UDPPacket";
 import { Host } from "./Host";
 import { EthernetFrame } from "./Ethernet/EthernetFrame";
 
@@ -26,6 +24,7 @@ host1.eth0.rxStream.on("data", (data) => {
 });
 
 setInterval(async () => {
+    /*
     let ippack = new IPv4Packet(228,
         InternetProtocols.UDP,
         host1.ipModule.ipAddr,
@@ -34,8 +33,14 @@ setInterval(async () => {
     );
 
     host1.sendIPv4Packet(ippack);
-}, 1000);
+    */
 
+    host1.ipModule.icmpModule.sendEchoMessage(
+        host1.ipModule.ipAddr,
+        host2.ipModule.ipAddr,
+        Buffer.from("0123456789abcdef")
+    );
+}, 1000);
 
 wsharkout.on("open", () => {
     wsharkout.write(PCAPDump.createSectionHeader());

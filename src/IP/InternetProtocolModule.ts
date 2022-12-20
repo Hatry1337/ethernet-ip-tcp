@@ -1,8 +1,10 @@
 import EventEmitter from "events";
-import { IPv4Packet } from "./IPv4Packet";
+import { InternetProtocols, IPv4Packet } from "./IPv4Packet";
 import PacketIO from "../PacketIO";
 import { Host } from "../Host";
 import { clearInterval } from "timers";
+import { ICMPModule } from "./ICMP/ICMPModule";
+import { ICMP_DstUnreachable_Code, ICMP_TimeExceeded_Code } from "./ICMP/ICMPPacket";
 
 interface DataChunk {
     data: Buffer;
@@ -28,6 +30,8 @@ class InternetProtocolModule extends EventEmitter {
     //Outgoing packets WILL BE written here
     public output: PacketIO<IPv4Packet> = new PacketIO();
 
+    public icmpModule: ICMPModule = new ICMPModule();
+
     private chunkedPacketsAccumulator: Map<string, PacketAccumulator> = new Map();
     private readonly lifetimeCheckInterval: NodeJS.Timeout;
 
@@ -35,9 +39,19 @@ class InternetProtocolModule extends EventEmitter {
         super();
         this.input.on("packet", this.handleInputPacket.bind(this));
 
+        this.on("packet", packet => {
+           if(packet.proto === InternetProtocols.ICMP) {
+               this.icmpModule.input.write(packet);
+           }
+        });
+
+        this.icmpModule.output.on("packet", this.sendPacket.bind(this));
+
         this.output.useMiddleware((packet, next) => {
             if(packet.length > this.maxTransmissionUnit){
-                // #TODO add ICMP response on packet voiding.
+                this.icmpModule.sendDstUnreachableMessage(  this.ipAddr, packet.srcAddr,
+                                                            ICMP_DstUnreachable_Code.FragNeeded,
+                                                            packet.pack().subarray(0, 64) );
                 if(packet.flags.doNotFragment) return;
 
                 let packets = InternetProtocolModule.splitPacket(this.maxTransmissionUnit, packet);
@@ -58,6 +72,13 @@ class InternetProtocolModule extends EventEmitter {
             // Cleanup packet accumulators if packet is not collected in time
             for(let e of this.chunkedPacketsAccumulator.entries()) {
                 if(ts - e[1].receptionTimestamp >= this.chunkAccumulationTimeout) {
+                    if(e[1].firstPacket) {
+                        this.icmpModule.sendTimeExceedMessage(
+                            this.ipAddr, e[1].firstPacket.srcAddr,
+                            ICMP_TimeExceeded_Code.FragReassemblyTimeExceeded,
+                            e[1].firstPacket.pack().subarray(0, 64)
+                        );
+                    }
                     this.chunkedPacketsAccumulator.delete(e[0]);
                 }
             }
